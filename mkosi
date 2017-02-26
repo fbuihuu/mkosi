@@ -975,7 +975,7 @@ def run_postinst_script(args, workspace, run_build_script):
         shutil.copy2(args.postinst_script,
                      os.path.join(workspace, "root", "root/postinst"))
 
-        run_workspace_command(args, workspace, "/root/postinst", "build" if run_build_script else "final")
+        run_workspace_command(args, workspace, "/root/postinst", "build" if run_build_script else "final", network=args.postinst_with_network)
         os.unlink(os.path.join(workspace, "root", "root/postinst"))
 
 def install_boot_loader_arch(args, workspace):
@@ -1562,7 +1562,9 @@ def parse_args():
     group.add_argument("--build-script", help='Build script to run inside image', metavar='PATH')
     group.add_argument("--build-sources", help='Path for sources to build', metavar='PATH')
     group.add_argument("--build-package", action=PackageAction, dest='build_packages', help='Additional packages needed for build script', metavar='PACKAGE')
+    group.add_argument("--build-with-network", action='store_true', help='Run build script with network access (instead of private network)')
     group.add_argument("--postinst-script", help='Post installation script to run inside image', metavar='PATH')
+    group.add_argument("--postinst-with-network", action='store_true', help='Run post-installation script with network access (instead of private network)')
     group.add_argument('--use-git-files', type=parse_boolean,
                        help='Ignore any files that git itself ignores (default: guess)')
     group.add_argument("--settings", dest='nspawn_settings', help='Add in .spawn settings file', metavar='PATH')
@@ -1777,9 +1779,15 @@ def process_setting(args, section, key, value):
                 args.build_packages = list_value
             else:
                 args.build_packages.extend(list_value)
+        elif key == "BuildWithNetwork":
+            if not args.build_with_network:
+                args.build_with_network = parse_boolean(value)
         elif key == "PostInstallationScript":
             if args.postinst_script is None:
                 arg.postinst_script = value
+        elif key == "PostInstallationWithNetwork":
+            if not args.postinst_with_network:
+                args.postinst_with_network = parse_boolean(value)
         elif key == "NSpawnSettings":
             if args.nspawn_settings is None:
                 args.nspawn_settings = value
@@ -2325,7 +2333,6 @@ def run_build_script(args, workspace, raw):
                    target,
                    "--uuid=" + args.machine_id,
                    "--as-pid2",
-                   "--private-network",
                    "--register=no",
                    "--bind", dest + ":/root/dest",
                    "--bind=" + var_tmp(workspace) + ":/var/tmp",
@@ -2340,6 +2347,9 @@ def run_build_script(args, workspace, raw):
                 cmdline.append("--overlay=+/root/src::/root/src")
         else:
             cmdline.append("--chdir=/root")
+
+        if not args.build_with_network:
+            cmdline.append("--private-network")
 
         cmdline.append("/root/" + os.path.basename(args.build_script))
         subprocess.run(cmdline, check=True)
